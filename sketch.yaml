@@ -1,0 +1,2 @@
+default_fqbn: arduino:avr:micro
+default_port: /dev/ttyACM0
