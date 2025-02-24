@@ -10,6 +10,8 @@ Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,JOYSTICK_TYPE_GAMEPAD,
                    false, false, false     // accelerator, brake, or steering
                    );
 
+#define RELEASE_TIME 20;
+
 /*
 0 - ignition
 1 - start
@@ -51,9 +53,11 @@ Encoder encoders[4] = {
 const int matrixRowOutputs[4] = {18,19,20,21};
 
 int lastIgnitionState = 0;
+unsigned long ignitionReleaseTime;
 int lastStartState = 0;
 
 int lastEncoderButtonState[4] = {0,0,0,0};
+unsigned long toggleSwitchReleaseTime[5] = {-1, -1, -1, -1, -1};
 int lastButtonState[20] = {
     0,0,0,0,0,
     0,0,0,0,0,
@@ -86,11 +90,19 @@ void setup() {
 }
 
 void loop() {
+    unsigned long currentTime = millis();
+
     // IGNITION              // invert - pulled up
     int currentIgnitionState = digitalRead(IGNITION_PIN);
     if (currentIgnitionState != lastIgnitionState) {
-        Joystick.setButton(IGNITION, currentIgnitionState);
+        Joystick.pressButton(IGNITION);
+        ignitionReleaseTime = currentTime + RELEASE_TIME;
         lastIgnitionState = currentIgnitionState;
+    }
+
+    if (ignitionReleaseTime != -1 && currentTime >= ignitionReleaseTime) {
+        Joystick.releaseButton(IGNITION);
+        ignitionReleaseTime = -1;
     }
 
     // START
@@ -107,7 +119,6 @@ void loop() {
         lastEncoderButtonState[0] = currentEncoder1;
     }
 
-    unsigned long currentTime = millis();
     // all encoder movements
     for (int i = 0; i < 4; i++) {
         long currentPosition = encoders[i].read();
@@ -123,7 +134,7 @@ void loop() {
                 encoderStates[i].buttonToRelease = encoderDownButtons[i];
             }
 
-            encoderStates[i].releaseTime = currentTime + 10;
+            encoderStates[i].releaseTime = currentTime + RELEASE_TIME;
             encoderStates[i].lastPosition = 0;
             encoders[i].write(0);
         }
@@ -166,8 +177,22 @@ void loop() {
                 int button = digitalRead(SHIFTER_DT);
                 int buttonIndex = i*5+j;
                 if (button != lastButtonState[buttonIndex]) {
-                    Joystick.setButton(14 + buttonIndex, button);
-                    lastButtonState[buttonIndex] = button;
+                    // 5 toggle switches
+                    if (buttonIndex < 5) {
+                        Joystick.pressButton(14 + buttonIndex);
+                        toggleSwitchReleaseTime[buttonIndex] = currentTime + RELEASE_TIME;
+                        lastButtonState[buttonIndex] = button;
+                    } else {
+                        Joystick.setButton(14 + buttonIndex, button);
+                        lastButtonState[buttonIndex] = button;
+                    }
+                }
+
+                for (int i = 0; i < 5; i++) {
+                    if(toggleSwitchReleaseTime[i] != -1 && currentTime >= toggleSwitchReleaseTime[i]) {
+                        Joystick.releaseButton(14 + i);
+                        toggleSwitchReleaseTime[i] = -1;
+                    }
                 }
             }
             digitalWrite(SHIFTER_CLK, HIGH);
